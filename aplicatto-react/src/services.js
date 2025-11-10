@@ -1,66 +1,139 @@
+import axios from "axios";
+
+// Base URL de la API (puede variarse segun entorno)
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000";
+
+// Clave para fallback local (si el backend no responde)
 const LS_KEY = "aplicatto-data-v1";
-/**
- * Load the database from localStorage.
- * @returns {object} The database object.
- */
-function load() {
+
+// Utilidades de fallback localStorage (solo se usan ante fallo de red)
+function loadFallback() {
   try {
     return JSON.parse(localStorage.getItem(LS_KEY)) || { users: [], courses: [], seq: 1 };
   } catch {
     return { users: [], courses: [], seq: 1 };
   }
 }
+function saveFallback(db) { localStorage.setItem(LS_KEY, JSON.stringify(db)); }
+
 /**
- * Save the database to localStorage.
- * @param {object} db The database object.
+ * Normaliza errores de axios lanzando objetos con message y status.
+ * @param {any} err
  */
-function save(db) { localStorage.setItem(LS_KEY, JSON.stringify(db)); }
+function normalizeError(err) {
+  if (err?.response) {
+    const { status, data } = err.response;
+    return { message: data?.error || data?.message || err.message, status };
+  }
+  return { message: err.message || "Error de red", status: 0 };
+}
+
+/**
+ * API facade: mantiene misma interfaz, ahora asíncrona (promesas) usando el backend.
+ * En caso de fallo de red usa fallback localStorage para no bloquear la UI.
+ */
 export const api = {
   /**
-   * Get the list of users.
-   * @returns {Array} The list of users.
+   * Lista usuarios.
+   * @returns {Promise<Array>} usuarios
    */
-  listUsers() { return load().users; },
-  /**
-   * Create a new user.
-   * @param {object} user The user to create.
-   * @returns {object} The created user.
-   */
-  createUser(user) { const db = load(); user.id = db.seq++; db.users.push(user); save(db); return user; },
-  /**
-   * Update a user.
-   * @param {object} user The user to update.
-   * @returns {object} The updated user.
-   */
-  updateUser(user) {
-    const db = load();
-    const index = db.users.findIndex(u => u.id === user.id);
-    if (index > -1) {
-      db.users[index] = user;
-      save(db);
-      return user;
+  async listUsers() {
+    try {
+      const { data } = await axios.get(`${BASE_URL}/users`);
+      return data;
+    } catch (err) {
+      console.warn("Fallo listUsers, usando fallback", err);
+      return loadFallback().users;
     }
-    return null;
   },
   /**
-   * Delete a user.
-   * @param {number} id The id of the user to delete.
+   * Crea usuario.
+   * @param {object} user
+   * @returns {Promise<object>}
    */
-  deleteUser(id) { const db = load(); db.users = db.users.filter(u => u.id !== id); save(db); },
+  async createUser(user) {
+    try {
+      const { data } = await axios.post(`${BASE_URL}/users`, user);
+      return data;
+    } catch (_err) {
+      const db = loadFallback();
+      user.id = db.seq++;
+      db.users.push(user);
+      saveFallback(db);
+      return user;
+    }
+  },
   /**
-   * Get the list of courses.
-   * @returns {Array} The list of courses.
+   * Actualiza usuario.
+   * @param {object} user
    */
-  listCourses() { return load().courses; },
+  async updateUser(user) {
+    if (!user.id) throw new Error("User id requerido para update");
+    try {
+      const { data } = await axios.put(`${BASE_URL}/users/${user.id}`, user);
+      return data;
+    } catch (_err) {
+      // Sincroniza fallback
+      const db = loadFallback();
+      const idx = db.users.findIndex(u => u.id === user.id);
+      if (idx > -1) {
+        db.users[idx] = user;
+        saveFallback(db);
+        return user;
+      }
+      throw normalizeError(_err);
+    }
+  },
   /**
-   * Create a new course.
-   * @param {object} course The course to create.
-   * @returns {object} The created course.
+   * Elimina usuario.
+   * @param {number} id
    */
-  createCourse(course) { const db = load(); course.id = db.seq++; db.courses.push(course); save(db); return course; },
+  async deleteUser(id) {
+    try {
+      await axios.delete(`${BASE_URL}/users/${id}`);
+    } catch (_err) {
+      const db = loadFallback();
+      db.users = db.users.filter(u => u.id !== id);
+      saveFallback(db);
+    }
+  },
   /**
-   * Delete a course.
-   * @param {number} id The id of the course to delete.
+   * Lista cursos.
    */
-  deleteCourse(id) { const db = load(); db.courses = db.courses.filter(c => c.id !== id); save(db); },
+  async listCourses() {
+    try {
+      const { data } = await axios.get(`${BASE_URL}/courses`);
+      return data;
+    } catch (err) {
+      console.warn("Fallo listCourses, usando fallback", err);
+      return loadFallback().courses;
+    }
+  },
+  /**
+   * Crea curso.
+   */
+  async createCourse(course) {
+    try {
+      const { data } = await axios.post(`${BASE_URL}/courses`, course);
+      return data;
+    } catch (_err) {
+      const db = loadFallback();
+      course.id = db.seq++;
+      db.courses.push(course);
+      saveFallback(db);
+      return course;
+    }
+  },
+  /**
+   * Elimina curso.
+   */
+  async deleteCourse(id) {
+    try {
+      await axios.delete(`${BASE_URL}/courses/${id}`);
+    } catch (_err) {
+      const db = loadFallback();
+      db.courses = db.courses.filter(c => c.id !== id);
+      saveFallback(db);
+    }
+  },
 };

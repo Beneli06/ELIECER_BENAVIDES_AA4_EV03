@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useNavigate, Link } from "react-router-dom";
 import { api } from "../../services";
+import { toast } from "sonner";
 
 const schema = z.object({
   nombre: z.string().min(3, "Mínimo 3 caracteres"),
@@ -18,9 +19,14 @@ export default function CourseForm() {
     formState: { errors, isSubmitting },
   } = useForm({ resolver: zodResolver(schema) });
 
-  const onSubmit = (data) => {
-    api.createCourse(data);
-    nav("/courses");
+  const onSubmit = async (data) => {
+    try {
+      await api.createCourse(data);
+      toast.success("Curso creado");
+      nav("/courses");
+    } catch (e) {
+      toast.error("No se pudo crear el curso");
+    }
   };
 
   return (

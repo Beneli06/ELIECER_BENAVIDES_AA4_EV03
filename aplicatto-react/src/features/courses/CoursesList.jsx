@@ -1,14 +1,35 @@
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { api } from "../../services";
+import { toast } from "sonner";
 
 export default function CoursesList() {
-  const courses = api.listCourses();
+  const [courses, setCourses] = useState([]);
 
-  const handleDelete = (id) => {
-    if (confirm("¿Eliminar este curso?")) {
-      api.deleteCourse(id);
-      // Mantener comportamiento simple basado en almacenamiento local
-      location.reload();
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await api.listCourses();
+        setCourses(data);
+      } catch (e) {
+        toast.error("No se pudieron cargar los cursos");
+      }
+    })();
+  }, []);
+
+  const handleDelete = async (id) => {
+    if (!confirm("¿Eliminar este curso?")) return;
+    const prev = courses;
+    setCourses(prev.filter(c => c.id !== id));
+    try {
+      await api.deleteCourse(id);
+      toast.success("Curso eliminado");
+    } catch (e) {
+      toast.error("Error eliminando curso");
+      setCourses(prev);
+    } finally {
+      const fresh = await api.listCourses();
+      setCourses(fresh);
     }
   };
 

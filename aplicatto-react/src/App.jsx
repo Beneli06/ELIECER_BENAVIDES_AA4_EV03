@@ -3,6 +3,7 @@ import Header from "./components/Header.jsx";
 import UsersList from "./features/users/UsersList.jsx";
 import UserForm from "./features/users/UserForm.jsx";
 import { api } from "./services.js";
+import { toast } from "sonner";
 
 /**
  * The main component of the application.
@@ -17,33 +18,58 @@ export default function App() {
   // State to control the visibility of the form
   const [isFormVisible, setIsFormVisible] = useState(false);
 
-  // Load the users from the API when the component mounts
+  // Load users from API when component mounts
   useEffect(() => {
-    setUsers(api.listUsers());
+    (async () => {
+      try {
+        const data = await api.listUsers();
+        setUsers(data);
+      } catch (e) {
+        toast.error("No se pudieron cargar los usuarios");
+      }
+    })();
   }, []);
 
   /**
    * Handles the deletion of a user.
    * @param {number} id The id of the user to delete.
    */
-  const handleDeleteUser = id => {
-    api.deleteUser(id);
-    setUsers(api.listUsers());
+  const handleDeleteUser = async (id) => {
+    const prev = users;
+    setUsers(prev.filter(u => u.id !== id)); // Optimistic UI
+    try {
+      await api.deleteUser(id);
+      toast.success("Usuario eliminado");
+    } catch (e) {
+      toast.error("Error eliminando usuario");
+      // Revertir
+      setUsers(prev);
+    } finally {
+      const fresh = await api.listUsers();
+      setUsers(fresh);
+    }
   };
 
   /**
    * Handles saving a user (creating or updating).
    * @param {object} user The user to save.
    */
-  const handleSaveUser = user => {
-    if (user.id) {
-      api.updateUser(user);
-    } else {
-      api.createUser(user);
+  const handleSaveUser = async (user) => {
+    try {
+      if (user.id) {
+        await api.updateUser(user);
+        toast.success("Usuario actualizado");
+      } else {
+        await api.createUser(user);
+        toast.success("Usuario creado");
+      }
+      const data = await api.listUsers();
+      setUsers(data);
+      setIsFormVisible(false);
+      setUserToEdit(null);
+    } catch (e) {
+      toast.error("No se pudo guardar el usuario");
     }
-    setUsers(api.listUsers());
-    setIsFormVisible(false);
-    setUserToEdit(null);
   };
 
   /**
